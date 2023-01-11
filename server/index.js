@@ -71,6 +71,7 @@ async function validateSendDetails(body) {
 }
 
 function isSignatureVerified(signature, messageHash, publicKey) {
+  // all params must be the same type -- this solution used hex values
   return secp.verify(signature, messageHash, publicKey);
 }
 
@@ -80,6 +81,9 @@ async function doesSendDetailsMatchMessageHash(sender, amount, recipient, messag
     amount,
     recipient
   })));
+  // this check is needed to make sure that the request coming from the front end
+  //   matches the message hash details that was signed. if the the generated hash
+  //   doesn't match the messageHash, we know some details were tampered with.
   return messageHash !== toHex(rawMessageHash);
 }
 
