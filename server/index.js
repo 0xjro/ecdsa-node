@@ -3,10 +3,11 @@ const app = express();
 const cors = require("cors");
 const port = 3042;
 
+const secp = require("ethereum-cryptography/secp256k1");
+const { toHex, utf8ToBytes } = require("ethereum-cryptography/utils");
+
 app.use(cors());
 app.use(express.json());
-
-const secp = require("ethereum-cryptography/secp256k1");
 
 const balances = {
   "046abb1d7ead9007ba2579fd0db632408455976952160f7890bc8e983485227318bffdb2c2bd8420b035f0bf08806a468778c472684ad793dc3063ac84f34d43ee": 100,
@@ -20,20 +21,16 @@ app.get("/balance/:address", (req, res) => {
   res.send({ balance });
 });
 
-app.post("/send", (req, res) => {
+app.post("/send", async (req, res) => {
   const { 
     sender, 
     recipient, 
-    amount,
-    signature,
-    messageHash,
-    publicKey
+    amount
   } = req.body;
 
-  const isVerified = secp.verify(signature, messageHash, publicKey);
-
-  if (!isVerified) {
-    return res.status(400).send({ message: "Not a verified signature" });
+  let sendDetailsError = await validateSendDetails(req.body);
+  if (sendDetailsError) {
+    res.status(400).send(sendDetailsError);
   }
 
   setInitialBalance(sender);
@@ -51,6 +48,40 @@ app.post("/send", (req, res) => {
 app.listen(port, () => {
   console.log(`Listening on port ${port}!`);
 });
+
+async function validateSendDetails(body) {
+  const { 
+    sender, 
+    recipient, 
+    amount,
+    signature,
+    messageHash,
+    publicKey
+  } = body;
+
+  if (!isSignatureVerified(signature, messageHash, publicKey)) {
+    return { message: "Not a verified signature" };
+  }
+
+  if (await doesSendDetailsMatchMessageHash(sender, amount, recipient, messageHash)) {
+    return { message: "send details do not match message hash"};
+  }
+
+  return null;
+}
+
+function isSignatureVerified(signature, messageHash, publicKey) {
+  return secp.verify(signature, messageHash, publicKey);
+}
+
+async function doesSendDetailsMatchMessageHash(sender, amount, recipient, messageHash) {
+  let rawMessageHash = await secp.utils.sha256(utf8ToBytes(JSON.stringify({
+    sender,
+    amount,
+    recipient
+  })));
+  return messageHash !== toHex(rawMessageHash);
+}
 
 function setInitialBalance(address) {
   if (!balances[address]) {
